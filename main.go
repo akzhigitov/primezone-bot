@@ -34,8 +34,70 @@ type record struct {
 	Code string `bson:"code"`
 }
 
+type Config struct {
+	MongoConnectionUri string
+	MongoDatabase      string
+	SiteUrl            string
+	BotToken           string
+	ChatId             string
+}
 
 const UpdatedItemName = "primezone"
+
+func main() {
+	config := readConfig()
+	collection := getMongoCollection(config)
+	allDeals := parseDeals(config.SiteUrl)
+	newDeals := filter(allDeals, collection)
+	sendToTelegram(newDeals, config)
+	saveLastDealUrl(newDeals, collection)
+}
+
+func readConfig() *Config {
+	mongoConnectionUri, found := os.LookupEnv("MONGO_CONNECTION_URI")
+	if !found {
+		log.Fatal("MONGO_CONNECTION_URI env variable not found")
+	}
+
+	mongoDatabase, found := os.LookupEnv("MONGO_DATABASE")
+	if !found {
+		log.Fatal("MONGO_DATABASE env variable not found")
+	}
+
+	siteUrl, found := os.LookupEnv("SITE_URL")
+	if !found {
+		log.Fatal("SITE_URL env variable not found")
+	}
+
+	botToken, found := os.LookupEnv("TELEGRAM_BOT_TOKEN")
+	if !found {
+		log.Fatal("TELEGRAM_BOT_TOKEN env variable not found")
+	}
+
+	chatId, found := os.LookupEnv("TELEGRAM_CHAT_ID")
+	if !found {
+		log.Fatal("TELEGRAM_CHAT_ID env variable not found")
+	}
+
+	return &Config{
+		MongoConnectionUri: mongoConnectionUri,
+		MongoDatabase:      mongoDatabase,
+		SiteUrl:            siteUrl,
+		BotToken:           botToken,
+		ChatId:             chatId,
+	}
+}
+
+func getMongoCollection(config *Config) *mongo.Collection {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(config.MongoConnectionUri))
+	if err != nil {
+		log.Fatal(err)
+	}
+	database := client.Database(config.MongoDatabase)
+	return database.Collection("updaters")
+}
 
 func parseDeals(siteUrl string) []Deal {
 	res, err := http.Get(siteUrl + "/?sort=new")
@@ -75,53 +137,13 @@ func parseDeals(siteUrl string) []Deal {
 	return deals
 }
 
-func main() {
-	mongoConnectionString, found := os.LookupEnv("MONGO_CONNECTION_URI")
-	if !found {
-		log.Fatal("MONGO_CONNECTION_URI env variable not found")
-	}
-
-	mongoDatabase, found := os.LookupEnv("MONGO_DATABASE")
-	if !found {
-		log.Fatal("MONGO_DATABASE env variable not found")
-	}
-
-	siteUrl, found := os.LookupEnv("SITE_URL")
-	if !found {
-		log.Fatal("SITE_URL env variable not found")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoConnectionString))
-	if err != nil {
-		log.Fatal(err)
-	}
-	database := client.Database(mongoDatabase)
-	collection := database.Collection("updaters")
-
-	allDeals := parseDeals(siteUrl)
-	newDeals := filter(allDeals, collection)
-	sendToTelegram(newDeals)
-	saveLastDealUrl(newDeals, collection)
-}
-
-func sendToTelegram(deals []Deal) {
-	botToken, found := os.LookupEnv("TELEGRAM_BOT_TOKEN")
-	if !found {
-		log.Fatal("TELEGRAM_BOT_TOKEN env variable not found")
-	}
-
-	chatId, found := os.LookupEnv("TELEGRAM_CHAT_ID")
-	if !found {
-		log.Fatal("TELEGRAM_CHAT_ID env variable not found")
-	}
+func sendToTelegram(deals []Deal, config *Config) {
 
 	client := resty.New()
 	for _, deal := range deals {
 
 		p := Photo{
-			ChatId:                chatId,
+			ChatId:                config.ChatId,
 			ParseMode:             "MarkdownV2",
 			DisableWebPagePreview: false,
 			Caption:               fmt.Sprintf("[%s](%s)", deal.title, deal.url),
@@ -129,7 +151,7 @@ func sendToTelegram(deals []Deal) {
 		}
 
 		post, err := client.R().SetHeader("Content-Type", "application/json").SetBody(p).
-			Post(fmt.Sprintf("https://api.telegram.org/bot%v/sendPhoto", botToken))
+			Post(fmt.Sprintf("https://api.telegram.org/bot%v/sendPhoto", config.BotToken))
 
 		if err != nil {
 			log.Fatal(err)
@@ -155,7 +177,7 @@ func saveLastDealUrl(deals []Deal, collection *mongo.Collection) {
 		"name": UpdatedItemName,
 		"code": latestDeal.url,
 	}
-	
+
 	collection.FindOneAndReplace(ctx, filter, replacement, opts)
 }
 
@@ -186,4 +208,3 @@ func getLastDealUrl(collection *mongo.Collection) string {
 	}
 	return result.Code
 }
-
