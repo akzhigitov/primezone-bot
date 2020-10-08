@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/golang/glog"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"log"
 	"net/http"
 	"os"
 	"time"
@@ -56,27 +56,27 @@ func main() {
 func readConfig() *Config {
 	mongoConnectionUri, found := os.LookupEnv("MONGO_CONNECTION_URI")
 	if !found {
-		log.Fatal("MONGO_CONNECTION_URI env variable not found")
+		glog.Fatal("MONGO_CONNECTION_URI env variable not found")
 	}
 
 	mongoDatabase, found := os.LookupEnv("MONGO_DATABASE")
 	if !found {
-		log.Fatal("MONGO_DATABASE env variable not found")
+		glog.Fatal("MONGO_DATABASE env variable not found")
 	}
 
 	siteUrl, found := os.LookupEnv("SITE_URL")
 	if !found {
-		log.Fatal("SITE_URL env variable not found")
+		glog.Fatal("SITE_URL env variable not found")
 	}
 
 	botToken, found := os.LookupEnv("TELEGRAM_BOT_TOKEN")
 	if !found {
-		log.Fatal("TELEGRAM_BOT_TOKEN env variable not found")
+		glog.Fatal("TELEGRAM_BOT_TOKEN env variable not found")
 	}
 
 	chatId, found := os.LookupEnv("TELEGRAM_CHAT_ID")
 	if !found {
-		log.Fatal("TELEGRAM_CHAT_ID env variable not found")
+		glog.Fatal("TELEGRAM_CHAT_ID env variable not found")
 	}
 
 	return &Config{
@@ -93,7 +93,7 @@ func getMongoCollection(config *Config) *mongo.Collection {
 	defer cancel()
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(config.MongoConnectionUri))
 	if err != nil {
-		log.Fatal(err)
+		glog.Fatal(err)
 	}
 	database := client.Database(config.MongoDatabase)
 	return database.Collection("updaters")
@@ -102,15 +102,15 @@ func getMongoCollection(config *Config) *mongo.Collection {
 func parseDeals(siteUrl string) []Deal {
 	res, err := http.Get(siteUrl + "/?sort=new")
 	if err != nil {
-		log.Fatal(err)
+		glog.Fatal(err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		log.Fatalf("status code error: %d %s", res.StatusCode, res.Status)
+		glog.Fatalf("status code error: %d %s", res.StatusCode, res.Status)
 	}
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 	if err != nil {
-		log.Fatal(err)
+		glog.Fatal(err)
 	}
 
 	var deals []Deal
@@ -120,11 +120,11 @@ func parseDeals(siteUrl string) []Deal {
 		title := s.Find(".coupon-title").Text()
 		href, hrefExists := s.Attr("href")
 		if !hrefExists {
-			log.Fatalf("href not exists")
+			glog.Fatalf("href not exists")
 		}
 		imgSrc, srcExists := s.Find("img").Attr("src")
 		if !srcExists {
-			log.Fatalf("img src not exists")
+			glog.Fatalf("img src not exists")
 		}
 
 		deals = append(deals, Deal{
@@ -154,10 +154,10 @@ func sendToTelegram(deals []Deal, config *Config) {
 			Post(fmt.Sprintf("https://api.telegram.org/bot%v/sendPhoto", config.BotToken))
 
 		if err != nil {
-			log.Fatal(err)
+			glog.Fatal(err)
 		}
 
-		log.Printf("%+v\n", post)
+		glog.Infoln("%+v", post)
 	}
 }
 
@@ -204,7 +204,7 @@ func getLastDealUrl(collection *mongo.Collection) string {
 	err := single.Decode(result)
 
 	if err != nil {
-		log.Fatal(err)
+		glog.Fatal(err)
 	}
 	return result.Code
 }
