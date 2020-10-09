@@ -6,13 +6,17 @@ spec:
   schedule: "*/1 * * * *"
   jobTemplate:
     spec:
-    template:
-      spec:
-        containers:
-        - name: primezone-bot
-          image: gcr.io/PROJECT_ID/IMAGE:TAG
-          resources:
-            requests:
-              cpu: 100m
-            limits:
-              cpu: 100m
+      template:
+        spec:
+          containers:
+          - name: primezone-bot
+            image: gcr.io/PROJECT_ID/IMAGE:TAG
+            envFrom:
+              - secretRef:
+                  name: primezone-bot-secret
+            resources:
+              requests:
+                cpu: 100m
+              limits:
+                cpu: 100m
+          restartPolicy: OnFailure

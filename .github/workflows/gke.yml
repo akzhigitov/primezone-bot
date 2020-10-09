@@ -3,12 +3,12 @@ name: Build and Deploy to GKE
 on:
   push:
     branches:
-    - master
+    - gke
 
 env:
   PROJECT_ID: ${{ secrets.GKE_PROJECT }}
   GKE_CLUSTER: primezone
-  GKE_ZONE: ueurope-west1-b
+  GKE_ZONE: europe-west1-b
   DEPLOYMENT_NAME: primezone-bot
   IMAGE: primezone-bot
 
