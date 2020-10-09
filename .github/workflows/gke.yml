@@ -62,7 +62,7 @@ jobs:
       run: |-
         cd .k8s
         ../kustomize edit set image gcr.io/PROJECT_ID/IMAGE:TAG=gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA
-        ../kustomize edit add secret primezone-bot --from-literal=MONGO_CONNECTION_URI=${{ secrets.MONGO_CONNECTION_URI }}
+        ../kustomize edit add secret primezone-bot --from-literal=MONGO_CONNECTION_URI="${{ secrets.MONGO_CONNECTION_URI }}"
         ../kustomize edit add secret primezone-bot --from-literal=MONGO_DATABASE=${{ secrets.MONGO_DATABASE }}
         ../kustomize edit add secret primezone-bot --from-literal=SITE_URL=${{ secrets.SITE_URL }}
         ../kustomize edit add secret primezone-bot --from-literal=TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
