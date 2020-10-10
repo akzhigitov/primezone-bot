@@ -1,0 +1,45 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: primezone-bot
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: primezone-bot
+            image: gcr.io/PROJECT_ID/IMAGE:TAG
+            env:
+            - name: "MONGO_CONNECTION_URI"
+              valueFrom:
+               secretKeyRef:
+                 name: primezone-bot
+                 key: MONGO_CONNECTION_URI
+            - name: "MONGO_DATABASE"
+              valueFrom:
+               secretKeyRef:
+                 name: primezone-bot
+                 key: MONGO_DATABASE
+            - name: "SITE_URL"
+              valueFrom:
+               secretKeyRef:
+                 name: primezone-bot
+                 key: SITE_URL
+            - name: "TELEGRAM_BOT_TOKEN"
+              valueFrom:
+               secretKeyRef:
+                  name: primezone-bot
+                  key: TELEGRAM_BOT_TOKEN
+            - name: "TELEGRAM_CHAT_ID"
+              valueFrom:
+                 secretKeyRef:
+                  name: primezone-bot
+                  key: TELEGRAM_CHAT_ID
+            resources:
+              requests:
+                cpu: 100m
+              limits:
+                cpu: 100m
+          restartPolicy: OnFailure

@@ -1,4 +1,4 @@
-Backend для telegram-канала [@X5Primezone](https://t.me/x5primezone) по получение новинок с сайта x5.primezone.ru
+Backend для telegram-канала @X5
 
 **environment variables**
 * MONGO_CONNECTION_URI
