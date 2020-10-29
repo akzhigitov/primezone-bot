@@ -10,9 +10,7 @@ import (
 )
 
 func getMongoCollection(config *config) *mongo.Collection {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(config.MongoConnectionURI))
+	client, err := mongo.NewClient(options.Client().ApplyURI(config.MongoConnectionURI))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -34,6 +32,7 @@ func saveNewDeals(deals []deal, collection *mongo.Collection) error {
 	}
 	opts := options.InsertMany().SetOrdered(false)
 	_, err := collection.InsertMany(ctx, documents, opts)
+
 	return err
 }
 

@@ -29,6 +29,7 @@ type config struct {
 	BotToken           string
 	ChatID             string
 	AuthToken          string
+	Schedule           string
 }
 
 type primeZoneReminder struct {
@@ -66,7 +67,7 @@ func main() {
 	config := readConfig()
 
 	jobrunner.Start()
-	err := jobrunner.Schedule("@every 1h", primeZoneReminder{config})
+	err := jobrunner.Schedule(config.Schedule, primeZoneReminder{config})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -105,6 +106,11 @@ func readConfig() *config {
 		log.Fatal("AUTH_TOKEN env variable not found")
 	}
 
+	schedule, found := os.LookupEnv("SCHEDULE")
+	if !found {
+		log.Fatal("SCHEDULE env variable not found")
+	}
+
 	return &config{
 		MongoConnectionURI: mongoConnectionURL,
 		MongoDatabase:      mongoDatabase,
@@ -112,5 +118,6 @@ func readConfig() *config {
 		BotToken:           botToken,
 		ChatID:             chatID,
 		AuthToken:          authToken,
+		Schedule:           schedule,
 	}
 }
