@@ -6,3 +6,5 @@ Backend для telegram-канала https://t.me/x5primezone
 * SITE_URL
 * TELEGRAM_BOT_TOKEN
 * TELEGRAM_CHAT_ID
+* AUTH_TOKEN
+* SCHEDULE

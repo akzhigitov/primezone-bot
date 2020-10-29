@@ -1,210 +1,123 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"github.com/golang/glog"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"net/http"
+	"github.com/bamzi/jobrunner"
+	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
 	"os"
-	"time"
-
-	"github.com/PuerkitoBio/goquery"
-	"github.com/go-resty/resty"
 )
 
-type Deal struct {
-	title    string
-	url      string
-	photoUrl string
+type deal struct {
+	title       string
+	url         string
+	photoURL    string
+	description string
 }
 
-type Photo struct {
-	ChatId                string `json:"chat_id"`
+type photo struct {
+	ChatID                string `json:"chat_id"`
 	Photo                 string `json:"photo"`
 	Caption               string `json:"caption"`
 	ParseMode             string `json:"parse_mode"`
 	DisableWebPagePreview bool   `json:"disable_web_page_preview"`
 }
 
-type record struct {
-	Name string `bson:"name"`
-	Code string `bson:"code"`
-}
-
-type Config struct {
-	MongoConnectionUri string
+type config struct {
+	MongoConnectionURI string
 	MongoDatabase      string
-	SiteUrl            string
+	SiteURL            string
 	BotToken           string
-	ChatId             string
+	ChatID             string
+	AuthToken          string
+	Schedule           string
 }
 
-const UpdatedItemName = "primezone"
+type primeZoneReminder struct {
+	config *config
+}
+
+func (e primeZoneReminder) Run() {
+	collection := getMongoCollection(e.config)
+	allDeals := parseDeals(e.config)
+	newDeals := filter(allDeals, collection)
+	sendToTelegram(newDeals, e.config)
+	err := saveNewDeals(newDeals, collection)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func jobJSON(c *gin.Context) {
+	c.JSON(200, jobrunner.StatusJson())
+}
+
+func jobHTML(c *gin.Context) {
+	c.HTML(200, "Status.html", jobrunner.StatusPage())
+}
 
 func main() {
+	routes := gin.Default()
+
+	routes.GET("/jobrunner/json", jobJSON)
+
+	routes.LoadHTMLGlob("views/Status.html")
+
+	routes.GET("/jobrunner/html", jobHTML)
+
 	config := readConfig()
-	collection := getMongoCollection(config)
-	allDeals := parseDeals(config.SiteUrl)
-	newDeals := filter(allDeals, collection)
-	sendToTelegram(newDeals, config)
-	saveLastDealUrl(newDeals, collection)
+
+	jobrunner.Start()
+	err := jobrunner.Schedule(config.Schedule, primeZoneReminder{config})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	routes.Run(":8080")
 }
 
-func readConfig() *Config {
-	mongoConnectionUri, found := os.LookupEnv("MONGO_CONNECTION_URI")
+func readConfig() *config {
+	mongoConnectionURL, found := os.LookupEnv("MONGO_CONNECTION_URI")
 	if !found {
-		glog.Fatal("MONGO_CONNECTION_URI env variable not found")
+		log.Fatal("MONGO_CONNECTION_URI env variable not found")
 	}
 
 	mongoDatabase, found := os.LookupEnv("MONGO_DATABASE")
 	if !found {
-		glog.Fatal("MONGO_DATABASE env variable not found")
+		log.Fatal("MONGO_DATABASE env variable not found")
 	}
 
-	siteUrl, found := os.LookupEnv("SITE_URL")
+	siteURL, found := os.LookupEnv("SITE_URL")
 	if !found {
-		glog.Fatal("SITE_URL env variable not found")
+		log.Fatal("SITE_URL env variable not found")
 	}
 
 	botToken, found := os.LookupEnv("TELEGRAM_BOT_TOKEN")
 	if !found {
-		glog.Fatal("TELEGRAM_BOT_TOKEN env variable not found")
+		log.Fatal("TELEGRAM_BOT_TOKEN env variable not found")
 	}
 
-	chatId, found := os.LookupEnv("TELEGRAM_CHAT_ID")
+	chatID, found := os.LookupEnv("TELEGRAM_CHAT_ID")
 	if !found {
-		glog.Fatal("TELEGRAM_CHAT_ID env variable not found")
+		log.Fatal("TELEGRAM_CHAT_ID env variable not found")
 	}
 
-	return &Config{
-		MongoConnectionUri: mongoConnectionUri,
+	authToken, found := os.LookupEnv("AUTH_TOKEN")
+	if !found {
+		log.Fatal("AUTH_TOKEN env variable not found")
+	}
+
+	schedule, found := os.LookupEnv("SCHEDULE")
+	if !found {
+		log.Fatal("SCHEDULE env variable not found")
+	}
+
+	return &config{
+		MongoConnectionURI: mongoConnectionURL,
 		MongoDatabase:      mongoDatabase,
-		SiteUrl:            siteUrl,
+		SiteURL:            siteURL,
 		BotToken:           botToken,
-		ChatId:             chatId,
+		ChatID:             chatID,
+		AuthToken:          authToken,
+		Schedule:           schedule,
 	}
-}
-
-func getMongoCollection(config *Config) *mongo.Collection {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(config.MongoConnectionUri))
-	if err != nil {
-		glog.Fatal(err)
-	}
-	database := client.Database(config.MongoDatabase)
-	return database.Collection("updaters")
-}
-
-func parseDeals(siteUrl string) []Deal {
-	res, err := http.Get(siteUrl + "/?sort=new")
-	if err != nil {
-		glog.Fatal(err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode != 200 {
-		glog.Fatalf("status code error: %d %s", res.StatusCode, res.Status)
-	}
-	doc, err := goquery.NewDocumentFromReader(res.Body)
-	if err != nil {
-		glog.Fatal(err)
-	}
-
-	var deals []Deal
-
-	doc.Find(".coupon-thumb").Each(func(i int, s *goquery.Selection) {
-
-		title := s.Find(".coupon-title").Text()
-		href, hrefExists := s.Attr("href")
-		if !hrefExists {
-			glog.Fatalf("href not exists")
-		}
-		imgSrc, srcExists := s.Find("img").Attr("src")
-		if !srcExists {
-			glog.Fatalf("img src not exists")
-		}
-
-		deals = append(deals, Deal{
-			title:    title,
-			url:      siteUrl + href,
-			photoUrl: siteUrl + imgSrc,
-		})
-	})
-
-	return deals
-}
-
-func sendToTelegram(deals []Deal, config *Config) {
-
-	client := resty.New()
-	for _, deal := range deals {
-
-		p := Photo{
-			ChatId:                config.ChatId,
-			ParseMode:             "MarkdownV2",
-			DisableWebPagePreview: false,
-			Caption:               fmt.Sprintf("[%s](%s)", deal.title, deal.url),
-			Photo:                 deal.photoUrl,
-		}
-
-		post, err := client.R().SetHeader("Content-Type", "application/json").SetBody(p).
-			Post(fmt.Sprintf("https://api.telegram.org/bot%v/sendPhoto", config.BotToken))
-
-		if err != nil {
-			glog.Fatal(err)
-		}
-
-		glog.Infoln("%+v", post)
-	}
-}
-
-func saveLastDealUrl(deals []Deal, collection *mongo.Collection) {
-	if len(deals) == 0 {
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	latestDeal := deals[0]
-
-	opts := options.FindOneAndReplace().SetUpsert(true)
-	filter := bson.M{"name": bson.M{"$eq": UpdatedItemName}}
-	replacement := bson.M{
-		"name": UpdatedItemName,
-		"code": latestDeal.url,
-	}
-
-	collection.FindOneAndReplace(ctx, filter, replacement, opts)
-}
-
-func filter(deals []Deal, collection *mongo.Collection) []Deal {
-	lastDealUrl := getLastDealUrl(collection)
-	var result []Deal
-	for _, deal := range deals {
-		if deal.url == lastDealUrl {
-			break
-		}
-		result = append(result, deal)
-	}
-
-	return result
-}
-
-func getLastDealUrl(collection *mongo.Collection) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	filter := bson.M{"name": bson.M{"$eq": UpdatedItemName}}
-	result := &record{}
-	single := collection.FindOne(ctx, filter)
-	err := single.Decode(result)
-
-	if err != nil {
-		glog.Fatal(err)
-	}
-	return result.Code
 }
