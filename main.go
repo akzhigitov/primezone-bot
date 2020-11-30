@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"github.com/bamzi/jobrunner"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
@@ -37,8 +38,15 @@ type primeZoneReminder struct {
 }
 
 func (e primeZoneReminder) Run() {
-	collection := getMongoCollection(e.config)
+	mongoClient := getMongoClient(e.config)
+	ctx, _ := context.WithCancel(context.Background())
+	mongoConnectErr := mongoClient.Connect(ctx)
+	defer mongoClient.Disconnect(ctx)
+	if mongoConnectErr != nil {
+		log.Fatal(mongoConnectErr)
+	}
 	allDeals := parseDeals(e.config)
+	collection := mongoClient.Database(e.config.MongoDatabase).Collection("updaters")
 	newDeals := filter(allDeals, collection)
 	sendToTelegram(newDeals, e.config)
 	err := saveNewDeals(newDeals, collection)
@@ -57,17 +65,15 @@ func jobHTML(c *gin.Context) {
 
 func main() {
 	routes := gin.Default()
-
 	routes.GET("/jobrunner/json", jobJSON)
-
 	routes.LoadHTMLGlob("views/Status.html")
-
 	routes.GET("/jobrunner/html", jobHTML)
-
 	config := readConfig()
 
 	jobrunner.Start()
-	err := jobrunner.Schedule(config.Schedule, primeZoneReminder{config})
+	reminder := primeZoneReminder{config}
+	jobrunner.Now(reminder)
+	err := jobrunner.Schedule(config.Schedule, reminder)
 	if err != nil {
 		log.Fatal(err)
 	}

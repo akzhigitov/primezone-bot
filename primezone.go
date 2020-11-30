@@ -4,6 +4,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	resty "github.com/go-resty/resty"
 	log "github.com/sirupsen/logrus"
+	"strconv"
 	"strings"
 )
 
@@ -16,39 +17,41 @@ func parseDeals(config *config) []deal {
 		log.Fatal(authError)
 	}
 
-	page, pageError := client.R().SetCookies(authResult.Cookies()).Get(config.SiteURL + "?sort=new")
-
-	if pageError != nil {
-		log.Fatal(pageError)
-	}
-
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(page.String()))
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	var deals []deal
 
-	doc.Find(".coupon-thumb").Each(func(i int, s *goquery.Selection) {
+	for pageID := 1; pageID < 2; pageID++ {
 
-		title := s.Find(".coupon-title").Text()
-		href, hrefExists := s.Attr("href")
-		if !hrefExists {
-			log.Fatalf("href not exists")
+		page, pageError := client.R().SetCookies(authResult.Cookies()).Get(config.SiteURL + "?page=" + strconv.Itoa(pageID) + "&sort=new")
+		if pageError != nil {
+			log.Fatal(pageError)
 		}
-		imgSrc, srcExists := s.Find("img").Attr("src")
-		if !srcExists {
-			log.Fatalf("img src not exists")
-		}
-		description := s.Find(".coupon-desciption").Text()
 
-		deals = append(deals, deal{
-			title:       title,
-			description: description,
-			url:         config.SiteURL + href,
-			photoURL:    config.SiteURL + imgSrc,
+		doc, err := goquery.NewDocumentFromReader(strings.NewReader(page.String()))
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		doc.Find(".coupon-thumb").Each(func(i int, s *goquery.Selection) {
+
+			title := s.Find(".coupon-title").Text()
+			href, hrefExists := s.Attr("href")
+			if !hrefExists {
+				log.Fatalf("href not exists")
+			}
+			imgSrc, srcExists := s.Find("img").Attr("src")
+			if !srcExists {
+				log.Fatalf("img src not exists")
+			}
+			description := s.Find(".coupon-desciption").Text()
+
+			deals = append(deals, deal{
+				title:       title,
+				description: description,
+				url:         config.SiteURL + href,
+				photoURL:    config.SiteURL + imgSrc,
+			})
 		})
-	})
+	}
 
 	return deals
 }

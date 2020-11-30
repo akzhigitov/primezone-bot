@@ -9,13 +9,12 @@ import (
 	"time"
 )
 
-func getMongoCollection(config *config) *mongo.Collection {
+func getMongoClient(config *config) *mongo.Client {
 	client, err := mongo.NewClient(options.Client().ApplyURI(config.MongoConnectionURI))
 	if err != nil {
 		log.Fatal(err)
 	}
-	database := client.Database(config.MongoDatabase)
-	return database.Collection("updaters")
+	return client
 }
 
 func saveNewDeals(deals []deal, collection *mongo.Collection) error {
